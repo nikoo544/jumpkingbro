@@ -2,38 +2,36 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mario Jump King Online</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Golf Climb Multiplayer</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;900&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
     <div id="start-menu" class="overlay">
         <div class="glass-panel menu-content">
-            <h1>Mario Jump King</h1>
+            <h1>GOLF CLIMB</h1>
             <div class="input-group">
-                <label>Tu Nombre:</label>
-                <input type="text" id="player-name" placeholder="Nombre..." maxlength="10">
+                <label>TU NOMBRE</label>
+                <input type="text" id="player-name" placeholder="Escribe aquí..." maxlength="10">
             </div>
             <div class="input-group">
-                <label>Color de Player:</label>
+                <label>COLOR DE BOLA</label>
                 <div class="color-picker">
                     <div class="color-opt selected" style="background: #ff4d4d;" data-color="#ff4d4d"></div>
                     <div class="color-opt" style="background: #4d94ff;" data-color="#4d94ff"></div>
                     <div class="color-opt" style="background: #4dff88;" data-color="#4dff88"></div>
                     <div class="color-opt" style="background: #ffcc00;" data-color="#ffcc00"></div>
-                    <div class="color-opt" style="background: #ff4dff;" data-color="#ff4dff"></div>
                 </div>
             </div>
-            <button id="start-btn" class="btn-primary">¡EMPEZAR!</button>
+            <button id="start-btn" class="btn-primary">¡JUGAR AHORA!</button>
         </div>
     </div>
 
     <div id="game-container">
-        <canvas id="gameCanvas"></canvas>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
         
         <div id="ui-layer">
             <div id="top-left-hud">
@@ -41,32 +39,21 @@
                     <span class="label">ALTURA</span>
                     <span id="height-count" class="value">0</span><span class="unit">m</span>
                 </div>
-                <div class="stat-badge glass-panel">
-                    <span class="label">MONEDAS</span>
-                    <span id="coin-count" class="value">0</span>
-                </div>
             </div>
 
             <div id="top-right-hud">
-                <div id="leaderboard" class="glass-panel small">
-                    <h3>🏆 Ranking</h3>
+                <div id="leaderboard" class="glass-panel">
+                    <h3>🏆 RANKING</h3>
                     <ul id="rank-list"></ul>
                 </div>
             </div>
 
             <div id="bottom-left-hud">
-                <div class="controls-hint glass-panel small">
-                    <p>Lanzar: <strong>CLIC IZQ (Arrastra)</strong></p>
-                    <p>Dash: <strong>SHIFT</strong></p>
-                    <p>Gancho: <strong>CLIC DER (Hold)</strong></p>
-                    <p>Emojis: <strong>1, 2, 3, 4</strong></p>
+                <div class="controls-hint glass-panel">
+                    <p>Arrastra <strong>CLIC IZQ</strong> para lanzar</p>
+                    <p><strong>SHIFT</strong> para Dash en aire</p>
+                    <p><strong>CLIC DER</strong> para Gancho</p>
                 </div>
-            </div>
-
-            <div id="shop-modal" class="glass-panel hidden">
-                <button class="close-btn">&times;</button>
-                <h2>Tienda</h2>
-                <div class="shop-items"></div>
             </div>
         </div>
     </div>
