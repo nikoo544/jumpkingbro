@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mario Jump King Online</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui-layer">
+            <div id="lobby-ui" class="glass-panel">
+                <h1>Mario Jump King <span class="online-tag">Online</span></h1>
+                <div class="stats">
+                    <span id="player-count">Conectando...</span>
+                    <span id="player-id">ID: ----</span>
+                </div>
+                <div class="game-stats glass-panel">
+                    <p>Altura: <span id="height-count">0</span>m</p>
+                    <p>Monedas: <span id="coin-count">0</span></p>
+                </div>
+                <div id="leaderboard" class="glass-panel">
+                    <h3>Ranking Global</h3>
+                    <ul id="rank-list">
+                        <li>1. Jugador - 0m</li>
+                    </ul>
+                </div>
+                <div class="controls-hint">
+                    <p>Mover: <strong>A / D</strong></p>
+                    <p>Saltar (Mantener): <strong>ESPACIO</strong></p>
+                </div>
+                <div id="multiplayer-status" class="stats">
+                    <span id="player-count">Buscando servidor...</span>
+                    <span id="player-id">ID: ----</span>
+                </div>
+            </div>
+
+            <div id="shop-modal" class="glass-panel hidden">
+                <button class="close-btn">&times;</button>
+                <h2>Tienda de Objetos</h2>
+                <div class="shop-items">
+                    <div class="shop-item">
+                        <img src="tiles.png" alt="Icono" class="item-icon">
+                        <div class="item-info">
+                            <h3>Flor de Fuego</h3>
+                            <p>Doble altura de salto temporal</p>
+                            <button class="buy-btn">10 Monedas</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="dialog-box" class="glass-panel hidden">
+                <p id="dialog-text"></p>
+                <span class="next-hint">Presiona E para continuar</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
