@@ -11,50 +11,57 @@
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
+    <div id="start-menu" class="overlay">
+        <div class="glass-panel menu-content">
+            <h1>Mario Jump King</h1>
+            <div class="input-group">
+                <label>Tu Nombre:</label>
+                <input type="text" id="player-name" placeholder="Nombre..." maxlength="10">
+            </div>
+            <div class="input-group">
+                <label>Color de Player:</label>
+                <div class="color-picker">
+                    <div class="color-opt selected" style="background: #ff4d4d;" data-color="#ff4d4d"></div>
+                    <div class="color-opt" style="background: #4d94ff;" data-color="#4d94ff"></div>
+                    <div class="color-opt" style="background: #4dff88;" data-color="#4dff88"></div>
+                    <div class="color-opt" style="background: #ffcc00;" data-color="#ffcc00"></div>
+                    <div class="color-opt" style="background: #ff4dff;" data-color="#ff4dff"></div>
+                </div>
+            </div>
+            <button id="start-btn" class="btn-primary">¡EMPEZAR!</button>
+        </div>
+    </div>
+
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
         
         <div id="ui-layer">
-            <div id="lobby-ui" class="glass-panel">
-                <h1>Mario Jump King <span class="online-tag">Online</span></h1>
-                <div class="stats">
-                    <span id="player-count">Conectando...</span>
-                    <span id="player-id">ID: ----</span>
+            <div id="top-left-hud">
+                <div class="game-stats glass-panel small">
+                    <p>H: <span id="height-count">0</span>m</p>
+                    <p>M: <span id="coin-count">0</span></p>
                 </div>
-                <div class="game-stats glass-panel">
-                    <p>Altura: <span id="height-count">0</span>m</p>
-                    <p>Monedas: <span id="coin-count">0</span></p>
+            </div>
+
+            <div id="top-right-hud">
+                <div id="leaderboard" class="glass-panel small">
+                    <h3>🏆 Ranking</h3>
+                    <ul id="rank-list"></ul>
                 </div>
-                <div id="leaderboard" class="glass-panel">
-                    <h3>Ranking Global</h3>
-                    <ul id="rank-list">
-                        <li>1. Jugador - 0m</li>
-                    </ul>
-                </div>
-                <div class="controls-hint">
-                    <p>Mover: <strong>A / D</strong></p>
-                    <p>Saltar (Mantener): <strong>ESPACIO</strong></p>
+            </div>
+
+            <div id="bottom-left-hud">
+                <div class="controls-hint glass-panel small">
+                    <p>Mover: <strong>WASD</strong></p>
+                    <p>Golpear Bola: <strong>CLIC IZQ (Dash)</strong></p>
+                    <p>Gancho: <strong>CLIC DER / Q</strong></p>
                 </div>
             </div>
 
             <div id="shop-modal" class="glass-panel hidden">
                 <button class="close-btn">&times;</button>
-                <h2>Tienda de Objetos</h2>
-                <div class="shop-items">
-                    <div class="shop-item">
-                        <img src="tiles.png" alt="Icono" class="item-icon">
-                        <div class="item-info">
-                            <h3>Flor de Fuego</h3>
-                            <p>Doble altura de salto temporal</p>
-                            <button class="buy-btn">10 Monedas</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="dialog-box" class="glass-panel hidden">
-                <p id="dialog-text"></p>
-                <span class="next-hint">Presiona E para continuar</span>
+                <h2>Tienda</h2>
+                <div class="shop-items"></div>
             </div>
         </div>
     </div>

@@ -53,6 +53,7 @@ io.on('connection', (socket) => {
             y: playerData.y,
             state: playerData.state,
             color: playerData.color,
+            name: playerData.name || 'Jugador',
             height: 0
         };
         socket.broadcast.emit('playerJoined', players[socket.id]);
@@ -74,7 +75,7 @@ io.on('connection', (socket) => {
     socket.on('updateHeight', (height) => {
         if (players[socket.id]) {
             players[socket.id].height = height;
-            updateLeaderboard(socket.id, height);
+            updateLeaderboard(socket.id, height, players[socket.id].name);
         }
     });
 
@@ -85,12 +86,15 @@ io.on('connection', (socket) => {
     });
 });
 
-function updateLeaderboard(id, height) {
+function updateLeaderboard(id, height, name) {
     const entry = leaderboard.find(e => e.id === id);
     if (entry) {
-        if (height > entry.height) entry.height = height;
+        if (height > entry.height) {
+            entry.height = height;
+            entry.name = name;
+        }
     } else {
-        leaderboard.push({ id, height });
+        leaderboard.push({ id, height, name });
     }
     
     leaderboard.sort((a, b) => b.height - a.height);

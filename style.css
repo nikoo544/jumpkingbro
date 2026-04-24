@@ -25,6 +25,78 @@ body {
     align-items: center;
 }
 
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.menu-content {
+    width: 380px;
+    padding: 40px;
+    text-align: center;
+    animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.menu-content h1 {
+    font-size: 2.5rem;
+    margin-bottom: 30px;
+    background: linear-gradient(to bottom, #fff, var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+#start-btn {
+    width: 100%;
+    padding: 15px;
+    font-size: 1.1rem;
+    margin-top: 30px;
+    letter-spacing: 2px;
+}
+
+.input-group {
+    margin: 20px 0;
+    text-align: left;
+}
+
+.input-group label {
+    display: block;
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+    opacity: 0.8;
+}
+
+.color-picker {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.color-opt {
+    width: 30px;
+    height: 30px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.2s;
+}
+
+.color-opt:hover { transform: scale(1.1); }
+.color-opt.selected { border-color: white; transform: scale(1.2); }
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 #game-container {
     position: relative;
     width: 800px;
@@ -41,14 +113,27 @@ canvas {
     height: 100%;
 }
 
-#ui-layer {
+.glass-panel.small {
+    padding: 10px 15px;
+    font-size: 0.8rem;
+}
+
+#top-left-hud {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    padding: 20px;
+    top: 20px;
+    left: 20px;
+}
+
+#top-right-hud {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+}
+
+#bottom-left-hud {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
 }
 
 .glass-panel {

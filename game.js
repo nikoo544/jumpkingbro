@@ -22,7 +22,11 @@ const state = {
     isLobby: true,
     dashCooldown: 0,
     leaderboard: [],
-    socket: null
+    socket: null,
+    playerName: '',
+    playerColor: '#ff4d4d',
+    myBall: null,
+    otherBalls: new Map()
 };
 
 // Asset Loading
@@ -60,6 +64,8 @@ class Player {
         this.animFrame = 0;
         this.state = 'idle'; // idle, charging, jumping, falling
         this.lastSentHeight = 0;
+        this.name = id === 'local' ? '' : id.substring(0, 5);
+        this.hook = { active: false, x: 0, y: 0, targetX: 0, targetY: 0, length: 0 };
     }
 
     update() {
@@ -131,7 +137,7 @@ class Player {
             this.state = 'idle';
         }
 
-        if (this.isLocal && (Math.abs(this.vx) > 0.1 || Math.abs(this.vy) > 0.1 || this.isCharging)) {
+        if (this.isLocal && (Math.abs(this.vx) > 0.01 || Math.abs(this.vy) > 0.01 || this.isCharging)) {
             broadcastState(this);
         }
     }
@@ -162,27 +168,56 @@ class Player {
             }
         }
 
-        // Dash logic
+        // Hook logic
+        if (this.hook.active) {
+            const dx = this.hook.targetX - (this.x + this.width / 2);
+            const dy = this.hook.targetY - (this.y + this.height / 2);
+            const dist = Math.hypot(dx, dy);
+            
+            if (dist > 20) {
+                this.vx = (dx / dist) * 10;
+                this.vy = (dy / dist) * 10;
+            } else {
+                this.hook.active = false;
+            }
+        }
+
+        // Dash logic (Now also hits the ball)
         if (state.dashCooldown > 0) state.dashCooldown--;
     }
 
     dash(targetX, targetY) {
         if (state.dashCooldown > 0) return;
 
-        // Calculate direction
         const dx = targetX - (this.x + this.width / 2);
         const dy = targetY - (this.y + this.height / 2);
         const dist = Math.hypot(dx, dy);
         
-        // Apply dash velocity
         const dashPower = 15;
         this.vx = (dx / dist) * dashPower;
         this.vy = (dy / dist) * dashPower;
         
-        state.dashCooldown = 60; // 1 second cooldown at 60fps
-        
-        // VFX
+        state.dashCooldown = 60;
         createParticles(this.x + this.width/2, this.y + this.height/2, this.color, 15);
+
+        // Hit the ball if close
+        if (state.myBall) {
+            const ballDist = Math.hypot(this.x - state.myBall.x, this.y - state.myBall.y);
+            if (ballDist < 100) {
+                state.myBall.hit(dx / dist * 20, dy / dist * 20);
+            }
+        }
+    }
+
+    shootHook(targetX, targetY) {
+        // Find nearest platform in that direction
+        state.platforms.forEach(p => {
+            if (targetX > p.x && targetX < p.x + p.w && targetY > p.y && targetY < p.y + p.h) {
+                this.hook.active = true;
+                this.hook.targetX = targetX;
+                this.hook.targetY = targetY;
+            }
+        });
     }
 
     draw() {
@@ -208,6 +243,12 @@ class Player {
 
         ctx.fillRect(0, offY, drawW, drawH);
         
+        // Name Label
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 12px Outfit';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.name, drawW / 2, offY - 10);
+
         // Eyes for personality
         ctx.fillStyle = 'white';
         const eyeX = this.facing === 1 ? drawW - 15 : 5;
@@ -219,7 +260,71 @@ class Player {
             ctx.strokeRect(-2, offY - 2, drawW + 4, drawH + 4);
         }
 
+        if (this.isLocal && this.hook.active) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.moveTo(drawW/2, offY + drawH/2);
+            ctx.lineTo(this.hook.targetX - this.x, this.hook.targetY - this.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
         ctx.restore();
+    }
+}
+
+class Ball {
+    constructor(id, x, y, color) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.r = 12;
+        this.vx = 0;
+        this.vy = 0;
+        this.color = color;
+    }
+
+    update() {
+        this.vy += 0.3; // Gravity
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vx *= 0.98; // Friction
+
+        // Platform collisions
+        state.platforms.forEach(p => {
+            if (this.x + this.r > p.x && this.x - this.r < p.x + p.w &&
+                this.y + this.r > p.y && this.y - this.r < p.y + p.h) {
+                
+                // Bounce
+                if (Math.abs(this.y - p.y) < this.r || Math.abs(this.y - (p.y + p.h)) < this.r) {
+                    this.vy *= -0.7;
+                    this.y = this.y < p.y ? p.y - this.r : p.y + p.h + this.r;
+                } else {
+                    this.vx *= -0.7;
+                    this.x = this.x < p.x ? p.x - this.r : p.x + p.w + this.r;
+                }
+            }
+        });
+
+        if (this.x < 0 || this.x > 800) this.vx *= -1;
+    }
+
+    hit(vx, vy) {
+        this.vx = vx;
+        this.vy = vy;
+        createParticles(this.x, this.y, this.color, 10);
+    }
+
+    draw() {
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 3;
+        ctx.stroke();
     }
 }
 
@@ -228,22 +333,16 @@ function initMultiplayer() {
     state.socket = io();
 
     state.socket.on('connect', () => {
+        // Just store the socket, wait for Start Menu to register
         const id = state.socket.id;
-        
-        if (!state.myPlayer) {
-            state.myPlayer = new Player(id, 400, 500, '#ff4d4d', true);
-            state.socket.emit('newPlayer', {
-                x: state.myPlayer.x,
-                y: state.myPlayer.y,
-                state: state.myPlayer.state,
-                color: state.myPlayer.color
-            });
-        }
     });
 
     state.socket.on('initLevel', (data) => {
         state.platforms = data.platforms;
         state.items = data.items.map(i => new Flower(i.x, i.y, i.type === 'coin'));
+        if (state.myPlayer && !state.myBall) {
+            state.myBall = new Ball(state.socket.id, state.myPlayer.x, state.myPlayer.y - 50, state.playerColor);
+        }
     });
 
     state.socket.on('currentPlayers', (serverPlayers) => {
@@ -251,7 +350,11 @@ function initMultiplayer() {
             if (id !== state.socket.id) {
                 const pData = serverPlayers[id];
                 const p = new Player(id, pData.x, pData.y, pData.color || '#4d94ff');
+                p.name = pData.name || id.substring(0, 5);
                 state.otherPlayers.set(id, p);
+                
+                const b = new Ball(id, pData.x, pData.y - 50, pData.color || '#4d94ff');
+                state.otherBalls.set(id, b);
             }
         });
     });
@@ -259,7 +362,11 @@ function initMultiplayer() {
     state.socket.on('playerJoined', (pData) => {
         if (pData.id !== state.socket.id) {
             const p = new Player(pData.id, pData.x, pData.y, pData.color || '#4d94ff');
+            p.name = pData.name || pData.id.substring(0, 5);
             state.otherPlayers.set(pData.id, p);
+            
+            const b = new Ball(pData.id, pData.x, pData.y - 50, pData.color || '#4d94ff');
+            state.otherBalls.set(pData.id, b);
         }
     });
 
@@ -269,11 +376,18 @@ function initMultiplayer() {
             p.x = pData.x;
             p.y = pData.y;
             p.state = pData.state;
+            
+            const b = state.otherBalls.get(pData.id);
+            if (b && pData.ballX !== undefined) {
+                b.x = pData.ballX;
+                b.y = pData.ballY;
+            }
         }
     });
 
     state.socket.on('playerLeft', (id) => {
         state.otherPlayers.delete(id);
+        state.otherBalls.delete(id);
     });
 
     state.socket.on('leaderboardUpdate', (serverBoard) => {
@@ -287,7 +401,7 @@ function renderLeaderboard() {
     list.innerHTML = '';
     state.leaderboard.forEach((entry, i) => {
         const li = document.createElement('li');
-        const name = entry.id === state.socket?.id ? "Tú" : entry.id.substring(0, 5);
+        const name = entry.name || entry.id.substring(0, 5);
         li.innerHTML = `<span>${i + 1}. ${name}</span> <span>${entry.height}m</span>`;
         list.appendChild(li);
     });
@@ -295,16 +409,24 @@ function renderLeaderboard() {
 
 function broadcastState(player) {
     if (!state.socket || !state.socket.connected) return;
-    state.socket.emit('playerUpdate', {
+    const data = {
         x: player.x,
         y: player.y,
         state: player.state
-    });
+    };
     
-    // Also update height on server if it changed significantly
-    if (Math.abs(player.lastSentHeight - state.maxHeight) > 1) {
-        state.socket.emit('updateHeight', state.maxHeight);
-        player.lastSentHeight = state.maxHeight;
+    if (state.myBall) {
+        data.ballX = state.myBall.x;
+        data.ballY = state.myBall.y;
+    }
+
+    state.socket.emit('playerUpdate', data);
+    
+    // Use ball height for ranking
+    const ballHeight = state.myBall ? Math.floor((560 - state.myBall.y) / 10) : 0;
+    if (Math.abs(player.lastSentHeight - ballHeight) > 1) {
+        state.socket.emit('updateHeight', ballHeight);
+        player.lastSentHeight = ballHeight;
     }
 }
 
@@ -386,14 +508,38 @@ function initLevel() {
     state.npcs.push(new NPC(700, 500, "Sabio", "Usa CLIC para DASH."));
 }
 
-// Click for Dash
+// Click logic
 canvas.addEventListener('mousedown', e => {
     if (state.myPlayer) {
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top + state.camera.y;
-        state.myPlayer.dash(mouseX, mouseY);
+        
+        if (e.button === 0) { // Left click: Dash/Hit
+            state.myPlayer.dash(mouseX, mouseY);
+        } else if (e.button === 2) { // Right click: Hook
+            state.myPlayer.shootHook(mouseX, mouseY);
+        }
     }
+});
+
+// Prevent context menu
+canvas.oncontextmenu = (e) => e.preventDefault();
+
+window.addEventListener('keydown', e => {
+    if (e.code === 'KeyQ') { // Alternate Hook Key
+        const rect = canvas.getBoundingClientRect();
+        // Since we don't have mouse pos here easily, let's just use mouse coords from last move
+        if (window.lastMouseX !== undefined) {
+            state.myPlayer.shootHook(window.lastMouseX, window.lastMouseY);
+        }
+    }
+});
+
+window.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    window.lastMouseX = e.clientX - rect.left;
+    window.lastMouseY = e.clientY - rect.top + state.camera.y;
 });
 
 // UI Interaction
@@ -434,6 +580,7 @@ window.addEventListener('keyup', e => keys[e.code] = false);
 async function start() {
     initLevel();
     initMultiplayer();
+    initMenu();
     
     // Non-blocking asset load
     loadAssets().then(() => console.log("Assets cargados."));
@@ -451,16 +598,18 @@ async function start() {
         // Draw Flowers
         state.items.forEach(flower => flower.draw(time));
 
-        // Update & Draw Platforms
-        ctx.fillStyle = '#444';
+        // Update & Draw Platforms (Solid Color)
+        ctx.fillStyle = '#555';
         state.platforms.forEach(p => {
-            // Use tileset if available
-            if (state.assets.tiles) {
-                ctx.drawImage(state.assets.tiles, 0, 0, 64, 64, p.x, p.y, p.w, p.h);
-            } else {
-                ctx.fillRect(p.x, p.y, p.w, p.h);
-            }
+            ctx.fillRect(p.x, p.y, p.w, p.h);
         });
+
+        // Update & Draw Balls
+        if (state.myBall) {
+            state.myBall.update();
+            state.myBall.draw();
+        }
+        state.otherBalls.forEach(b => b.draw());
 
         // Update & Draw Players
         if (state.myPlayer) {
@@ -505,8 +654,8 @@ async function start() {
                 }
             });
             
-            // Update Height
-            const currentHeight = Math.floor((560 - state.myPlayer.y) / 10);
+            // Update Height (Based on Ball)
+            const currentHeight = state.myBall ? Math.floor((560 - state.myBall.y) / 10) : 0;
             if (currentHeight > state.maxHeight) {
                 state.maxHeight = currentHeight;
                 document.getElementById('height-count').innerText = state.maxHeight;
@@ -537,6 +686,39 @@ async function start() {
         requestAnimationFrame(loop);
     }
     loop();
+}
+
+function initMenu() {
+    const startMenu = document.getElementById('start-menu');
+    const startBtn = document.getElementById('start-btn');
+    const colorOpts = document.querySelectorAll('.color-opt');
+
+    colorOpts.forEach(opt => {
+        opt.onclick = () => {
+            colorOpts.forEach(o => o.classList.remove('selected'));
+            opt.classList.add('selected');
+            state.playerColor = opt.dataset.color;
+        };
+    });
+
+    startBtn.onclick = () => {
+        state.playerName = document.getElementById('player-name').value || "Invitado";
+        startMenu.style.display = 'none';
+        
+        // Register player on server
+        if (!state.myPlayer && state.socket) {
+            state.myPlayer = new Player(state.socket.id, 400, 500, state.playerColor, true);
+            state.myPlayer.name = state.playerName;
+            state.myBall = new Ball(state.socket.id, 400, 450, state.playerColor);
+            state.socket.emit('newPlayer', {
+                x: state.myPlayer.x,
+                y: state.myPlayer.y,
+                state: state.myPlayer.state,
+                color: state.myPlayer.color,
+                name: state.playerName
+            });
+        }
+    };
 }
 
 start();
