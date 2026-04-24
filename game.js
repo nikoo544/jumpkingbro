@@ -229,8 +229,6 @@ function initMultiplayer() {
 
     state.socket.on('connect', () => {
         const id = state.socket.id;
-        document.getElementById('player-id').innerText = `ID: ${id.substring(0, 5)}`;
-        document.getElementById('player-count').innerText = `Conectando...`;
         
         if (!state.myPlayer) {
             state.myPlayer = new Player(id, 400, 500, '#ff4d4d', true);
@@ -243,6 +241,11 @@ function initMultiplayer() {
         }
     });
 
+    state.socket.on('initLevel', (data) => {
+        state.platforms = data.platforms;
+        state.items = data.items.map(i => new Flower(i.x, i.y, i.type === 'coin'));
+    });
+
     state.socket.on('currentPlayers', (serverPlayers) => {
         Object.keys(serverPlayers).forEach((id) => {
             if (id !== state.socket.id) {
@@ -251,14 +254,12 @@ function initMultiplayer() {
                 state.otherPlayers.set(id, p);
             }
         });
-        updatePlayerCount();
     });
 
     state.socket.on('playerJoined', (pData) => {
         if (pData.id !== state.socket.id) {
             const p = new Player(pData.id, pData.x, pData.y, pData.color || '#4d94ff');
             state.otherPlayers.set(pData.id, p);
-            updatePlayerCount();
         }
     });
 
@@ -273,7 +274,6 @@ function initMultiplayer() {
 
     state.socket.on('playerLeft', (id) => {
         state.otherPlayers.delete(id);
-        updatePlayerCount();
     });
 
     state.socket.on('leaderboardUpdate', (serverBoard) => {
@@ -309,8 +309,7 @@ function broadcastState(player) {
 }
 
 function updatePlayerCount() {
-    const count = state.otherPlayers.size + 1;
-    document.getElementById('player-count').innerText = `${count} Jugadores Online`;
+    // Obsolete
 }
 
 function updatePlayerCount() {
@@ -379,32 +378,12 @@ function createParticles(x, y, color, count) {
 }
 
 function initLevel() {
-    // Ground
-    state.platforms.push({ x: 0, y: 560, w: 800, h: 100 });
+    // Initial ground while waiting for server
+    state.platforms = [{ x: 0, y: 560, w: 800, h: 100 }];
     
-    // Vertical Level Generation (Jump King style)
-    let lastY = 560;
-    for (let i = 0; i < 100; i++) {
-        const x = Math.random() * 600 + 50;
-        const y = lastY - (Math.random() * 80 + 120);
-        const w = Math.random() * 100 + 80;
-        state.platforms.push({ x, y, w, h: 20 });
-        
-        // Add coins randomly
-        if (Math.random() > 0.7) {
-            state.items.push(new Flower(x + w/2 - 15, y - 40, true));
-        }
-        lastY = y;
-    }
-
-    // NPCs
-    state.npcs.push(new NPC(50, 500, "Vendedor", "¡Bienvenido a la tienda! Presiona E para abrir."));
-    state.npcs.push(new NPC(700, 500, "Sabio", "Usa CLIC para hacer un DASH hacia el ratón."));
-
-    // Flowers
-    for (let i = 0; i < 10; i++) {
-        state.items.push(new Flower(150 + i * 150, 530));
-    }
+    // NPCs (Keep them local or sync them too, let's keep them local for now)
+    state.npcs.push(new NPC(50, 500, "Vendedor", "Tienda pronto..."));
+    state.npcs.push(new NPC(700, 500, "Sabio", "Usa CLIC para DASH."));
 }
 
 // Click for Dash

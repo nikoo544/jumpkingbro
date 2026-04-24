@@ -16,11 +16,32 @@ app.use(express.static(__dirname));
 
 const players = {};
 let leaderboard = [];
+let platforms = [];
+let items = [];
+
+// Generate platforms once on server start
+function generateLevel() {
+    platforms = [{ x: 0, y: 560, w: 800, h: 100 }];
+    let lastY = 560;
+    for (let i = 0; i < 200; i++) {
+        const x = Math.random() * 600 + 50;
+        const y = lastY - (Math.random() * 80 + 120);
+        const w = Math.random() * 100 + 80;
+        platforms.push({ x, y, w, h: 20 });
+        
+        if (Math.random() > 0.6) {
+            items.push({ x: x + w/2 - 15, y: y - 40, type: 'coin' });
+        }
+        lastY = y;
+    }
+}
+generateLevel();
 
 io.on('connection', (socket) => {
     console.log('Jugador conectado:', socket.id);
 
-    // Send existing players to the new one
+    // Send level and current state to new player
+    socket.emit('initLevel', { platforms, items });
     socket.emit('currentPlayers', players);
     socket.emit('leaderboardUpdate', leaderboard);
 
