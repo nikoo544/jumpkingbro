@@ -364,10 +364,20 @@ function start() {
 
     function loop(time) {
         const h = state.myPlayer ? Math.floor((560 - state.myPlayer.y) / 10) : 0;
-        let bgColor = '#0f0f1b';
-        if (h > 200) bgColor = '#1b0f1b';
-        if (h > 400) bgColor = '#0f1b0f';
-        ctx.fillStyle = bgColor;
+        
+        // Dynamic Gradient Background (Night to Space)
+        const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        if (h < 500) {
+            grad.addColorStop(0, '#1a1a2e'); // Deep Blue
+            grad.addColorStop(1, '#16213e');
+        } else if (h < 1500) {
+            grad.addColorStop(0, '#0f3460'); // Midnight
+            grad.addColorStop(1, '#1a1a2e');
+        } else {
+            grad.addColorStop(0, '#000000'); // Space
+            grad.addColorStop(1, '#0f3460');
+        }
+        ctx.fillStyle = grad;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         ctx.save();
@@ -377,12 +387,36 @@ function start() {
         }
         ctx.translate(0, -state.camera.y);
 
+        // Draw Lobby Area (Grid floor and light)
+        if (state.camera.y > -200) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+            for(let i=0; i<8; i++) {
+                ctx.fillRect(i*100, 460, 2, 100);
+            }
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.font = 'bold 60px Outfit';
+            ctx.textAlign = 'center';
+            ctx.fillText("LOBBY", 400, 520);
+            ctx.font = '20px Outfit';
+            ctx.fillText("¡Lanza tu bola hacia arriba!", 400, 550);
+        }
+
         // Draw Goals
         state.goals.forEach(goal => {
-            ctx.fillStyle = '#ff4d4d'; ctx.beginPath(); ctx.moveTo(goal.x, goal.y);
-            ctx.lineTo(goal.x + 35, goal.y + 18); ctx.lineTo(goal.x, goal.y + 35); ctx.fill();
-            ctx.fillStyle = '#eee'; ctx.fillRect(goal.x, goal.y, 5, 65);
-            ctx.fillStyle = 'white'; ctx.font = 'bold 14px Outfit'; ctx.fillText(`GOAL: ${goal.height}m`, goal.x + 20, goal.y - 10);
+            const pulse = Math.sin(time/200) * 5;
+            ctx.fillStyle = '#ff4d4d'; ctx.beginPath(); ctx.moveTo(goal.x, goal.y + pulse);
+            ctx.lineTo(goal.x + 35, goal.y + 18 + pulse); ctx.lineTo(goal.x, goal.y + 35 + pulse); ctx.fill();
+            ctx.fillStyle = '#eee'; ctx.fillRect(goal.x, goal.y + pulse, 5, 65);
+            ctx.fillStyle = 'white'; ctx.font = 'bold 14px Outfit'; ctx.fillText(`GOAL: ${goal.height}m`, goal.x + 20, goal.y - 10 + pulse);
+            
+            // Goal Light
+            ctx.save();
+            ctx.globalAlpha = 0.2;
+            ctx.fillStyle = '#ff4d4d';
+            ctx.beginPath();
+            ctx.arc(goal.x, goal.y + 30, 80, 0, Math.PI*2);
+            ctx.fill();
+            ctx.restore();
         });
 
         // Draw Platforms (Normal Rects)
