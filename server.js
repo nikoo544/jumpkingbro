@@ -28,7 +28,13 @@ function generateLevel() {
         const x = Math.random() * 600 + 50;
         const y = lastY - (Math.random() * 80 + 120);
         const w = Math.random() * 100 + 80;
-        platforms.push({ x, y, w, h: 20 });
+        const hHeight = Math.floor((560 - y)/10);
+        
+        let type = 'fantasy';
+        if (hHeight > 200) type = 'anime';
+        if (hHeight > 400) type = 'unicorn';
+        
+        platforms.push({ x, y, w, h: 40, type }); // Made platforms thicker for better sprite rendering
         
         if (Math.random() > 0.6) {
             items.push({ x: x + w/2 - 15, y: y - 40, type: 'coin' });
@@ -36,7 +42,7 @@ function generateLevel() {
         
         // Add a goal every ~30 platforms
         if (i > 0 && i % 30 === 0) {
-            goals.push({ x: x + w/2 - 20, y: y - 60, height: Math.floor((560 - y)/10) });
+            goals.push({ x: x + w/2 - 20, y: y - 60, height: hHeight });
         }
         lastY = y;
     }
