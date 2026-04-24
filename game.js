@@ -2,11 +2,10 @@ const state = {
     myPlayer: null,
     otherPlayers: new Map(),
     platforms: [],
-    items: [],
     goals: [],
     particles: [],
-    npcs: [],
-    camera: { x: 0, y: 0 },
+    trail: [],
+    camera: { x: 0, y: 0, zoom: 1 },
     coins: 0,
     maxHeight: 0,
     dashCooldown: 0,
@@ -17,35 +16,20 @@ const state = {
     isAiming: false,
     shake: 0,
     myEmoji: null,
-    emojiTimer: 0,
-    assets: { unicorn: null, anime: null, fantasy: null }
+    emojiTimer: 0
 };
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const keys = {};
 
-// Asset Loading
-async function loadAssets() {
-    const loadImg = (src) => new Promise((resolve) => {
-        const img = new Image();
-        img.src = src;
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null); // Fallback to solid if image fails
-    });
-
-    state.assets.unicorn = await loadImg('unicorn.png');
-    state.assets.anime = await loadImg('anime.png');
-    state.assets.fantasy = await loadImg('fantasy.png');
-}
-
-// Player Class (The Ball)
+// Player Class (The Juicy Ball)
 class Player {
     constructor(id, x, y, color = '#ff4d4d', isLocal = false) {
         this.id = id;
         this.x = x;
         this.y = y;
-        this.r = 20;
+        this.r = 18;
         this.vx = 0;
         this.vy = 0;
         this.color = color;
@@ -54,15 +38,22 @@ class Player {
         this.emoji = null;
         this.hook = { active: false, targetX: 0, targetY: 0 };
         this.lastSentHeight = 0;
+        this.trail = [];
     }
 
     update() {
-        this.vy += 0.35; // Gravity
+        this.vy += 0.4; // Gravity
         this.x += this.vx;
         this.y += this.vy;
-        this.vx *= 0.98; // Friction
+        this.vx *= 0.985; // Friction
 
-        // Platform collisions
+        // Add to trail
+        if (this.isLocal) {
+            this.trail.push({ x: this.x, y: this.y, life: 1.0 });
+            if (this.trail.length > 20) this.trail.shift();
+        }
+
+        // Platform collisions (Solid Rects)
         state.platforms.forEach(p => {
             if (this.x + this.r > p.x && this.x - this.r < p.x + p.w &&
                 this.y + this.r > p.y && this.y - this.r < p.y + p.h) {
@@ -71,11 +62,13 @@ class Player {
                 const prevY = this.y - this.vy;
 
                 if (prevY + this.r <= p.y || prevY - this.r >= p.y + p.h) {
-                    this.vy *= -0.6;
+                    this.vy *= -0.65;
                     this.y = prevY + this.r <= p.y ? p.y - this.r : p.y + p.h + this.r;
+                    if (Math.abs(this.vy) > 2) createParticles(this.x, this.y, '#fff', 5);
                 } else {
-                    this.vx *= -0.6;
+                    this.vx *= -0.65;
                     this.x = prevX + this.r <= p.x ? p.x - this.r : p.x + p.w + this.r;
+                    if (Math.abs(this.vx) > 2) createParticles(this.x, this.y, '#fff', 5);
                 }
             }
         });
@@ -86,10 +79,10 @@ class Player {
             const dy = this.hook.targetY - this.y;
             const dist = Math.hypot(dx, dy);
             if (dist > 30) {
-                this.vx += (dx / dist) * 0.8;
-                this.vy += (dy / dist) * 0.8;
-                this.vx *= 0.95;
-                this.vy *= 0.95;
+                this.vx += (dx / dist) * 0.9;
+                this.vy += (dy / dist) * 0.9;
+                this.vx *= 0.96;
+                this.vy *= 0.96;
             }
         } else if (this.isLocal) {
             this.hook.active = false;
@@ -98,6 +91,7 @@ class Player {
         if (this.x < this.r || this.x > 800 - this.r) {
             this.vx *= -0.8;
             this.x = this.x < this.r ? this.r : 800 - this.r;
+            createParticles(this.x, this.y, '#fff', 3);
         }
 
         if (this.isLocal) {
@@ -105,10 +99,9 @@ class Player {
             state.maxHeight = Math.max(state.maxHeight, h);
             document.getElementById('height-count').innerText = state.maxHeight;
 
-            // Camera follow
-            const screenY = this.y - state.camera.y;
-            if (screenY < 200) state.camera.y = this.y - 200;
-            if (screenY > 400) state.camera.y = this.y - 400;
+            // Smooth Camera
+            const targetCamY = this.y - 300;
+            state.camera.y += (targetCamY - state.camera.y) * 0.1;
 
             if (state.dashCooldown > 0) state.dashCooldown--;
             if (state.emojiTimer > 0) {
@@ -116,7 +109,7 @@ class Player {
                 if (state.emojiTimer === 0) state.myEmoji = null;
             }
 
-            if (Math.abs(this.vx) > 0.01 || Math.abs(this.vy) > 0.01) {
+            if (Math.abs(this.vx) > 0.05 || Math.abs(this.vy) > 0.05) {
                 broadcastState(this);
             }
         }
@@ -125,7 +118,9 @@ class Player {
     hit(vx, vy) {
         this.vx = vx;
         this.vy = vy;
-        createParticles(this.x, this.y, this.color, 15);
+        state.shake = Math.hypot(vx, vy) / 2;
+        createParticles(this.x, this.y, this.color, 20);
+        showImpactText("CRACK!", this.x, this.y);
     }
 
     dash(targetX, targetY) {
@@ -133,18 +128,36 @@ class Player {
         const dx = targetX - this.x;
         const dy = targetY - this.y;
         const dist = Math.hypot(dx, dy);
-        this.vx = (dx / dist) * 15;
-        this.vy = (dy / dist) * 15;
+        this.vx = (dx / dist) * 18;
+        this.vy = (dy / dist) * 18;
         state.dashCooldown = 60;
-        createParticles(this.x, this.y, this.color, 15);
+        state.shake = 5;
+        createParticles(this.x, this.y, '#fff', 15);
     }
 
     draw() {
         ctx.save();
         
+        // Draw Trail
+        if (this.isLocal) {
+            ctx.beginPath();
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 10;
+            ctx.lineCap = 'round';
+            this.trail.forEach((t, i) => {
+                ctx.globalAlpha = (i / this.trail.length) * 0.5;
+                if (i === 0) ctx.moveTo(t.x, t.y);
+                else ctx.lineTo(t.x, t.y);
+            });
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+
+        // Hook line
         if (this.isLocal && this.hook.active) {
             ctx.beginPath();
-            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+            ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
             ctx.moveTo(this.x, this.y);
             ctx.lineTo(this.hook.targetX, this.hook.targetY);
@@ -152,8 +165,9 @@ class Player {
             ctx.setLineDash([]);
         }
 
+        // Ball Body (Neon Look)
         ctx.fillStyle = 'white';
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = 20;
         ctx.shadowColor = this.color;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
@@ -162,15 +176,16 @@ class Player {
         ctx.lineWidth = 4;
         ctx.stroke();
 
+        // Name & Emoji
         ctx.fillStyle = 'white';
-        ctx.font = 'bold 12px Outfit';
+        ctx.font = 'bold 13px Outfit';
         ctx.textAlign = 'center';
-        ctx.fillText(this.name, this.x, this.y - this.r - 10);
+        ctx.fillText(this.name, this.x, this.y - this.r - 12);
         
         const displayEmoji = this.isLocal ? state.myEmoji : this.emoji;
         if (displayEmoji) {
-            ctx.font = '24px serif';
-            ctx.fillText(displayEmoji, this.x, this.y - this.r - 30);
+            ctx.font = '26px serif';
+            ctx.fillText(displayEmoji, this.x, this.y - this.r - 35);
         }
 
         ctx.restore();
@@ -182,8 +197,8 @@ function createParticles(x, y, color, count) {
     for (let i = 0; i < count; i++) {
         state.particles.push({
             x, y, 
-            vx: (Math.random() - 0.5) * 10,
-            vy: (Math.random() - 0.5) * 10,
+            vx: (Math.random() - 0.5) * 12,
+            vy: (Math.random() - 0.5) * 12,
             life: 1.0,
             color
         });
@@ -191,7 +206,7 @@ function createParticles(x, y, color, count) {
 }
 
 function showImpactText(text, x, y) {
-    state.particles.push({ x, y, vx: 0, vy: -2, life: 1, text, color: '#fff' });
+    state.particles.push({ x, y, vx: (Math.random()-0.5)*2, vy: -3, life: 1.5, text, color: '#fff' });
 }
 
 // Multiplayer
@@ -283,7 +298,7 @@ canvas.addEventListener('mousedown', e => {
 
     if (e.button === 0) {
         window.isLeftClickHeld = true;
-        if (state.myPlayer && Math.hypot(mouseX - state.myPlayer.x, mouseY - state.myPlayer.y) < 100) state.isAiming = true;
+        if (state.myPlayer && Math.hypot(mouseX - state.myPlayer.x, mouseY - state.myPlayer.y) < 80) state.isAiming = true;
     } else if (e.button === 2) {
         window.isRightClickHeld = true;
         state.platforms.forEach(p => {
@@ -303,10 +318,8 @@ window.addEventListener('mouseup', e => {
             const dx = (e.clientX - rect.left) - state.myPlayer.x;
             const dy = (e.clientY - rect.top + state.camera.y) - state.myPlayer.y;
             const dist = Math.hypot(dx, dy);
-            const power = Math.min(dist / 5, 25);
+            const power = Math.min(dist / 5, 28);
             state.myPlayer.hit(-dx / dist * power, -dy / dist * power);
-            state.shake = power / 2;
-            showImpactText("BOOM!", state.myPlayer.x, state.myPlayer.y);
         }
         state.isAiming = false;
         window.isLeftClickHeld = false;
@@ -345,76 +358,114 @@ function initMenu() {
     };
 }
 
-async function start() {
-    await loadAssets();
+function start() {
     initMultiplayer();
     initMenu();
 
     function loop(time) {
         const h = state.myPlayer ? Math.floor((560 - state.myPlayer.y) / 10) : 0;
-        let bgColor = '#1a1a2e';
-        if (h > 200) bgColor = '#2e1a2e';
-        if (h > 400) bgColor = '#1a2e1a';
+        let bgColor = '#0f0f1b';
+        if (h > 200) bgColor = '#1b0f1b';
+        if (h > 400) bgColor = '#0f1b0f';
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         ctx.save();
         if (state.shake > 0) {
             ctx.translate((Math.random()-0.5)*state.shake, (Math.random()-0.5)*state.shake);
-            state.shake *= 0.9;
+            state.shake *= 0.85;
         }
         ctx.translate(0, -state.camera.y);
 
+        // Draw Goals
         state.goals.forEach(goal => {
             ctx.fillStyle = '#ff4d4d'; ctx.beginPath(); ctx.moveTo(goal.x, goal.y);
-            ctx.lineTo(goal.x + 30, goal.y + 15); ctx.lineTo(goal.x, goal.y + 30); ctx.fill();
-            ctx.fillStyle = '#eee'; ctx.fillRect(goal.x, goal.y, 4, 60);
-            ctx.fillStyle = 'white'; ctx.font = 'bold 12px Outfit'; ctx.fillText(`META: ${goal.height}m`, goal.x + 15, goal.y - 5);
+            ctx.lineTo(goal.x + 35, goal.y + 18); ctx.lineTo(goal.x, goal.y + 35); ctx.fill();
+            ctx.fillStyle = '#eee'; ctx.fillRect(goal.x, goal.y, 5, 65);
+            ctx.fillStyle = 'white'; ctx.font = 'bold 14px Outfit'; ctx.fillText(`GOAL: ${goal.height}m`, goal.x + 20, goal.y - 10);
         });
 
+        // Draw Platforms (Normal Rects)
         state.platforms.forEach(p => {
-            const sprite = state.assets[p.type];
-            if (sprite) ctx.drawImage(sprite, p.x, p.y, p.w, p.h);
-            else { ctx.fillStyle = '#555'; ctx.fillRect(p.x, p.y, p.w, p.h); }
+            ctx.fillStyle = '#222';
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(p.x, p.y, p.w, p.h);
         });
 
         if (state.myPlayer) {
             state.myPlayer.update();
             state.myPlayer.draw();
+            
+            // Trajectory Line while aiming
             if (state.isAiming) {
                 const dx = window.lastMouseX - state.myPlayer.x;
                 const dy = window.lastMouseY - state.myPlayer.y;
                 const dist = Math.hypot(dx, dy);
-                const power = Math.min(dist / 5, 25);
-                ctx.beginPath(); ctx.strokeStyle = state.playerColor; ctx.lineWidth = 4;
-                ctx.moveTo(state.myPlayer.x, state.myPlayer.y);
-                ctx.lineTo(state.myPlayer.x - dx/dist*power*5, state.myPlayer.y - dy/dist*power*5); ctx.stroke();
+                const power = Math.min(dist / 5, 28);
+                
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([5, 8]);
+                
+                let tx = state.myPlayer.x;
+                let ty = state.myPlayer.y;
+                let tvx = -dx / dist * power;
+                let tvy = -dy / dist * power;
+                
+                ctx.moveTo(tx, ty);
+                for(let i=0; i<30; i++) {
+                    tvy += 0.4;
+                    tx += tvx;
+                    ty += tvy;
+                    ctx.lineTo(tx, ty);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Visual Power Ring
+                ctx.beginPath();
+                ctx.strokeStyle = state.playerColor;
+                ctx.lineWidth = 6;
+                ctx.arc(state.myPlayer.x, state.myPlayer.y, 45, 0, Math.PI * 2 * (power / 28));
+                ctx.stroke();
             }
         }
         state.otherPlayers.forEach(p => p.draw());
 
+        // Particles
         for (let i = state.particles.length - 1; i >= 0; i--) {
-            const p = state.particles[i]; p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+            const p = state.particles[i]; p.x += p.vx; p.y += p.vy; p.life -= 0.015;
             if (p.life <= 0) { state.particles.splice(i, 1); continue; }
-            if (p.text) { ctx.fillStyle = p.color; ctx.font = 'bold 20px Outfit'; ctx.fillText(p.text, p.x, p.y); }
-            else { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fillRect(p.x, p.y, 4, 4); ctx.globalAlpha = 1.0; }
+            if (p.text) { 
+                ctx.fillStyle = `rgba(255,255,255,${p.life})`; 
+                ctx.font = 'bold 22px Outfit'; ctx.fillText(p.text, p.x, p.y); 
+            }
+            else { 
+                ctx.fillStyle = p.color; ctx.globalAlpha = p.life; 
+                ctx.fillRect(p.x, p.y, 5, 5); ctx.globalAlpha = 1.0; 
+            }
         }
 
         if (state.myPlayer) {
             state.goals.forEach(goal => {
                 const dist = Math.hypot(state.myPlayer.x - goal.x, state.myPlayer.y - goal.y);
-                if (dist < 50 && !goal.reached) {
+                if (dist < 60 && !goal.reached) {
                     goal.reached = true; state.coins += 100;
-                    showImpactText("SUCCESS!", goal.x, goal.y);
-                    createParticles(goal.x, goal.y, '#ffcc00', 40);
+                    showImpactText("LEVEL UP!", goal.x, goal.y);
+                    createParticles(goal.x, goal.y, '#ffcc00', 50);
                     document.getElementById('coin-count').innerText = state.coins;
                 }
             });
         }
         ctx.restore();
+        
+        // HUD Energy Bar
         if (state.dashCooldown > 0) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'; ctx.fillRect(20, 570, 100, 10);
-            ctx.fillStyle = state.playerColor; ctx.fillRect(20, 570, (1 - state.dashCooldown / 60) * 100, 10);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; ctx.fillRect(20, 570, 100, 12);
+            ctx.fillStyle = state.playerColor; ctx.fillRect(20, 570, (1 - state.dashCooldown / 60) * 100, 12);
         }
         requestAnimationFrame(loop);
     }
