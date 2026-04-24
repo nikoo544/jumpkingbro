@@ -5,7 +5,7 @@ const state = {
     goals: [],
     particles: [],
     trail: [],
-    camera: { x: 0, y: 0, zoom: 1 },
+    camera: { x: 0, y: 0, zoom: 0.8 },
     coins: 0,
     maxHeight: 0,
     dashCooldown: 0,
@@ -293,8 +293,10 @@ window.isRightClickHeld = false;
 
 canvas.addEventListener('mousedown', e => {
     const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top + state.camera.y;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const mouseX = ((e.clientX - rect.left) * scaleX) / state.camera.zoom;
+    const mouseY = (((e.clientY - rect.top) * scaleY) + state.camera.y * state.camera.zoom) / state.camera.zoom;
 
     if (e.button === 0) {
         window.isLeftClickHeld = true;
@@ -315,8 +317,13 @@ window.addEventListener('mouseup', e => {
     if (e.button === 0) {
         if (state.isAiming && state.myPlayer) {
             const rect = canvas.getBoundingClientRect();
-            const dx = (e.clientX - rect.left) - state.myPlayer.x;
-            const dy = (e.clientY - rect.top + state.camera.y) - state.myPlayer.y;
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const mouseX = ((e.clientX - rect.left) * scaleX) / state.camera.zoom;
+            const mouseY = (((e.clientY - rect.top) * scaleY) + state.camera.y * state.camera.zoom) / state.camera.zoom;
+            
+            const dx = mouseX - state.myPlayer.x;
+            const dy = mouseY - state.myPlayer.y;
             const dist = Math.hypot(dx, dy);
             const power = Math.min(dist / 5, 28);
             state.myPlayer.hit(-dx / dist * power, -dy / dist * power);
@@ -330,8 +337,10 @@ window.addEventListener('mouseup', e => {
 
 window.addEventListener('mousemove', e => {
     const rect = canvas.getBoundingClientRect();
-    window.lastMouseX = e.clientX - rect.left;
-    window.lastMouseY = e.clientY - rect.top + state.camera.y;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    window.lastMouseX = ((e.clientX - rect.left) * scaleX) / state.camera.zoom;
+    window.lastMouseY = (((e.clientY - rect.top) * scaleY) + state.camera.y * state.camera.zoom) / state.camera.zoom;
 });
 
 canvas.oncontextmenu = (e) => e.preventDefault();
@@ -381,11 +390,18 @@ function start() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         ctx.save();
+        
+        // Apply Global Zoom
+        ctx.scale(state.camera.zoom, state.camera.zoom);
+
         if (state.shake > 0) {
             ctx.translate((Math.random()-0.5)*state.shake, (Math.random()-0.5)*state.shake);
             state.shake *= 0.85;
         }
-        ctx.translate(0, -state.camera.y);
+        
+        // Offset for centering the player better with zoom
+        const offsetX = (canvas.width / state.camera.zoom - 800) / 2;
+        ctx.translate(offsetX, -state.camera.y);
 
         // Draw Lobby Area (Grid floor and light)
         if (state.camera.y > -200) {
