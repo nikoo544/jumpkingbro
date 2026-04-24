@@ -18,6 +18,7 @@ const players = {};
 let leaderboard = [];
 let platforms = [];
 let items = [];
+let goals = [];
 
 // Generate platforms once on server start
 function generateLevel() {
@@ -32,6 +33,11 @@ function generateLevel() {
         if (Math.random() > 0.6) {
             items.push({ x: x + w/2 - 15, y: y - 40, type: 'coin' });
         }
+        
+        // Add a goal every ~30 platforms
+        if (i > 0 && i % 30 === 0) {
+            goals.push({ x: x + w/2 - 20, y: y - 60, height: Math.floor((560 - y)/10) });
+        }
         lastY = y;
     }
 }
@@ -41,7 +47,7 @@ io.on('connection', (socket) => {
     console.log('Jugador conectado:', socket.id);
 
     // Send level and current state to new player
-    socket.emit('initLevel', { platforms, items });
+    socket.emit('initLevel', { platforms, items, goals });
     socket.emit('currentPlayers', players);
     socket.emit('leaderboardUpdate', leaderboard);
 
@@ -65,6 +71,9 @@ io.on('connection', (socket) => {
             players[socket.id].x = data.x;
             players[socket.id].y = data.y;
             players[socket.id].state = data.state;
+            players[socket.id].ballX = data.ballX;
+            players[socket.id].ballY = data.ballY;
+            players[socket.id].emoji = data.emoji;
             
             // Broadcast to everyone else
             socket.broadcast.emit('playerMoved', players[socket.id]);

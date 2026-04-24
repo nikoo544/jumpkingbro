@@ -26,7 +26,13 @@ const state = {
     playerName: '',
     playerColor: '#ff4d4d',
     myBall: null,
-    otherBalls: new Map()
+    otherBalls: new Map(),
+    goals: [],
+    isAiming: false,
+    aimPower: 0,
+    shake: 0,
+    myEmoji: null,
+    emojiTimer: 0
 };
 
 // Asset Loading
@@ -66,6 +72,7 @@ class Player {
         this.lastSentHeight = 0;
         this.name = id === 'local' ? '' : id.substring(0, 5);
         this.hook = { active: false, x: 0, y: 0, targetX: 0, targetY: 0, length: 0 };
+        this.emoji = null;
     }
 
     update() {
@@ -168,22 +175,33 @@ class Player {
             }
         }
 
-        // Hook logic
-        if (this.hook.active) {
+        // Hook logic (Releasable)
+        if (this.hook.active && window.isRightClickHeld) {
             const dx = this.hook.targetX - (this.x + this.width / 2);
             const dy = this.hook.targetY - (this.y + this.height / 2);
             const dist = Math.hypot(dx, dy);
             
-            if (dist > 20) {
-                this.vx = (dx / dist) * 10;
-                this.vy = (dy / dist) * 10;
+            if (dist > 30) {
+                this.vx = (dx / dist) * 12;
+                this.vy = (dy / dist) * 12;
             } else {
                 this.hook.active = false;
             }
+        } else if (this.hook.active) {
+            this.hook.active = false; // Release if button let go
         }
 
-        // Dash logic (Now also hits the ball)
         if (state.dashCooldown > 0) state.dashCooldown--;
+        if (keys['ShiftLeft'] || keys['ShiftRight']) {
+            if (window.lastMouseX !== undefined) {
+                this.dash(window.lastMouseX, window.lastMouseY);
+            }
+        }
+
+        if (state.emojiTimer > 0) {
+            state.emojiTimer--;
+            if (state.emojiTimer === 0) state.myEmoji = null;
+        }
     }
 
     dash(targetX, targetY) {
@@ -199,14 +217,6 @@ class Player {
         
         state.dashCooldown = 60;
         createParticles(this.x + this.width/2, this.y + this.height/2, this.color, 15);
-
-        // Hit the ball if close
-        if (state.myBall) {
-            const ballDist = Math.hypot(this.x - state.myBall.x, this.y - state.myBall.y);
-            if (ballDist < 100) {
-                state.myBall.hit(dx / dist * 20, dy / dist * 20);
-            }
-        }
     }
 
     shootHook(targetX, targetY) {
@@ -248,6 +258,13 @@ class Player {
         ctx.font = 'bold 12px Outfit';
         ctx.textAlign = 'center';
         ctx.fillText(this.name, drawW / 2, offY - 10);
+
+        // Emoji
+        const displayEmoji = this.isLocal ? state.myEmoji : this.emoji;
+        if (displayEmoji) {
+            ctx.font = '24px serif';
+            ctx.fillText(displayEmoji, drawW / 2, offY - 30);
+        }
 
         // Eyes for personality
         ctx.fillStyle = 'white';
@@ -340,6 +357,7 @@ function initMultiplayer() {
     state.socket.on('initLevel', (data) => {
         state.platforms = data.platforms;
         state.items = data.items.map(i => new Flower(i.x, i.y, i.type === 'coin'));
+        state.goals = data.goals || [];
         if (state.myPlayer && !state.myBall) {
             state.myBall = new Ball(state.socket.id, state.myPlayer.x, state.myPlayer.y - 50, state.playerColor);
         }
@@ -376,6 +394,7 @@ function initMultiplayer() {
             p.x = pData.x;
             p.y = pData.y;
             p.state = pData.state;
+            p.emoji = pData.emoji;
             
             const b = state.otherBalls.get(pData.id);
             if (b && pData.ballX !== undefined) {
@@ -412,7 +431,10 @@ function broadcastState(player) {
     const data = {
         x: player.x,
         y: player.y,
-        state: player.state
+        state: player.state,
+        name: state.playerName,
+        color: state.playerColor,
+        emoji: state.myEmoji
     };
     
     if (state.myBall) {
@@ -508,38 +530,69 @@ function initLevel() {
     state.npcs.push(new NPC(700, 500, "Sabio", "Usa CLIC para DASH."));
 }
 
-// Click logic
+// Mouse Input State
+window.isLeftClickHeld = false;
+window.isRightClickHeld = false;
+
 canvas.addEventListener('mousedown', e => {
-    if (state.myPlayer) {
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top + state.camera.y;
-        
-        if (e.button === 0) { // Left click: Dash/Hit
-            state.myPlayer.dash(mouseX, mouseY);
-        } else if (e.button === 2) { // Right click: Hook
-            state.myPlayer.shootHook(mouseX, mouseY);
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top + state.camera.y;
+
+    if (e.button === 0) { // Left click
+        window.isLeftClickHeld = true;
+        // Check if near ball to start aiming
+        if (state.myBall) {
+            const dist = Math.hypot(mouseX - state.myBall.x, mouseY - state.myBall.y);
+            if (dist < 60) state.isAiming = true;
         }
+    } else if (e.button === 2) { // Right click
+        window.isRightClickHeld = true;
+        if (state.myPlayer) state.myPlayer.shootHook(mouseX, mouseY);
     }
 });
 
-// Prevent context menu
-canvas.oncontextmenu = (e) => e.preventDefault();
-
-window.addEventListener('keydown', e => {
-    if (e.code === 'KeyQ') { // Alternate Hook Key
-        const rect = canvas.getBoundingClientRect();
-        // Since we don't have mouse pos here easily, let's just use mouse coords from last move
-        if (window.lastMouseX !== undefined) {
-            state.myPlayer.shootHook(window.lastMouseX, window.lastMouseY);
+window.addEventListener('mouseup', e => {
+    if (e.button === 0) { // Release hit
+        if (state.isAiming && state.myBall) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top + state.camera.y;
+            
+            const dx = mouseX - state.myBall.x;
+            const dy = mouseY - state.myBall.y;
+            const dist = Math.hypot(dx, dy);
+            const power = Math.min(dist / 5, 25);
+            
+            state.myBall.hit(-dx / dist * power, -dy / dist * power);
+            state.shake = power / 2;
+            showImpactText("BOOM!", state.myBall.x, state.myBall.y);
         }
+        state.isAiming = false;
+        window.isLeftClickHeld = false;
+    } else if (e.button === 2) {
+        window.isRightClickHeld = false;
     }
 });
+
+function showImpactText(text, x, y) {
+    state.particles.push({
+        x, y, vx: 0, vy: -2, life: 1, text, color: '#fff'
+    });
+}
 
 window.addEventListener('mousemove', e => {
     const rect = canvas.getBoundingClientRect();
     window.lastMouseX = e.clientX - rect.left;
     window.lastMouseY = e.clientY - rect.top + state.camera.y;
+});
+window.addEventListener('keydown', e => {
+    // Emojis
+    const emojis = { 'Digit1': '😊', 'Digit2': '😂', 'Digit3': '🔥', 'Digit4': '💀' };
+    if (emojis[e.code]) {
+        state.myEmoji = emojis[e.code];
+        state.emojiTimer = 120; // 2 seconds
+    }
 });
 
 // UI Interaction
@@ -593,10 +646,33 @@ async function start() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         ctx.save();
+        
+        // Screen Shake
+        if (state.shake > 0) {
+            ctx.translate((Math.random()-0.5)*state.shake, (Math.random()-0.5)*state.shake);
+            state.shake *= 0.9;
+        }
+
         ctx.translate(0, -state.camera.y);
 
         // Draw Flowers
         state.items.forEach(flower => flower.draw(time));
+
+        // Draw Goals (Flags)
+        state.goals.forEach(goal => {
+            ctx.fillStyle = '#ff4d4d';
+            ctx.beginPath();
+            ctx.moveTo(goal.x, goal.y);
+            ctx.lineTo(goal.x + 30, goal.y + 15);
+            ctx.lineTo(goal.x, goal.y + 30);
+            ctx.fill();
+            ctx.fillStyle = '#eee';
+            ctx.fillRect(goal.x, goal.y, 4, 60);
+            
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 12px Outfit';
+            ctx.fillText(`${goal.height}m`, goal.x + 15, goal.y - 5);
+        });
 
         // Update & Draw Platforms (Solid Color)
         ctx.fillStyle = '#555';
@@ -608,6 +684,26 @@ async function start() {
         if (state.myBall) {
             state.myBall.update();
             state.myBall.draw();
+            
+            // Draw Aim Arrow
+            if (state.isAiming) {
+                const dx = window.lastMouseX - state.myBall.x;
+                const dy = window.lastMouseY - state.myBall.y;
+                const dist = Math.hypot(dx, dy);
+                const power = Math.min(dist / 5, 25);
+                
+                ctx.beginPath();
+                ctx.strokeStyle = state.playerColor;
+                ctx.lineWidth = 4;
+                ctx.moveTo(state.myBall.x, state.myBall.y);
+                ctx.lineTo(state.myBall.x - dx / dist * power * 5, state.myBall.y - dy / dist * power * 5);
+                ctx.stroke();
+                
+                // Power arc
+                ctx.beginPath();
+                ctx.arc(state.myBall.x, state.myBall.y, 40, 0, Math.PI * 2 * (power / 25));
+                ctx.stroke();
+            }
         }
         state.otherBalls.forEach(b => b.draw());
 
@@ -631,10 +727,16 @@ async function start() {
                 state.particles.splice(i, 1);
                 continue;
             }
-            ctx.fillStyle = p.color;
-            ctx.globalAlpha = p.life;
-            ctx.fillRect(p.x, p.y, 4, 4);
-            ctx.globalAlpha = 1.0;
+            if (p.text) {
+                ctx.fillStyle = p.color;
+                ctx.font = 'bold 20px Outfit';
+                ctx.fillText(p.text, p.x, p.y);
+            } else {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(p.x, p.y, 4, 4);
+                ctx.globalAlpha = 1.0;
+            }
         }
 
         // Draw NPCs
@@ -649,6 +751,20 @@ async function start() {
                         item.collected = true;
                         state.coins += 10;
                         createParticles(item.x, item.y, '#ffcc00', 10);
+                        document.getElementById('coin-count').innerText = state.coins;
+                    }
+                }
+            });
+            
+            // Check for Goal collection
+            state.goals.forEach(goal => {
+                if (state.myBall) {
+                    const dist = Math.hypot(state.myBall.x - goal.x, state.myBall.y - goal.y);
+                    if (dist < 40 && !goal.reached) {
+                        goal.reached = true;
+                        state.coins += 50;
+                        showImpactText("GOAL! +50", goal.x, goal.y);
+                        createParticles(goal.x, goal.y, '#ffcc00', 30);
                         document.getElementById('coin-count').innerText = state.coins;
                     }
                 }
