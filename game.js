@@ -22,7 +22,7 @@ const state = {
     isLobby: true,
     dashCooldown: 0,
     leaderboard: [],
-    GLOBAL_ID: 'mario-global-srv-v1'
+    socket: null
 };
 
 // Asset Loading
@@ -59,6 +59,7 @@ class Player {
         this.facing = 1; // 1 for right, -1 for left
         this.animFrame = 0;
         this.state = 'idle'; // idle, charging, jumping, falling
+        this.lastSentHeight = 0;
     }
 
     update() {
@@ -222,97 +223,63 @@ class Player {
     }
 }
 
-// Multiplayer Logic (PeerJS) - Global Server Simulation
+// Multiplayer Logic (Socket.io)
 function initMultiplayer() {
-    // Try to be the host first
-    let peer = new Peer(state.GLOBAL_ID);
-    
-    peer.on('open', (id) => {
-        console.log("Eres el HOST del servidor global.");
-        setupPeer(peer, true);
-    });
+    state.socket = io();
 
-    peer.on('error', (err) => {
-        if (err.type === 'id-taken') {
-            console.log("Servidor global ocupado, conectando como cliente...");
-            const clientPeer = new Peer();
-            clientPeer.on('open', (id) => {
-                setupPeer(clientPeer, false);
-                const conn = clientPeer.connect(state.GLOBAL_ID);
-                setupConnection(conn);
+    state.socket.on('connect', () => {
+        const id = state.socket.id;
+        document.getElementById('player-id').innerText = `ID: ${id.substring(0, 5)}`;
+        document.getElementById('player-count').innerText = `Conectando...`;
+        
+        if (!state.myPlayer) {
+            state.myPlayer = new Player(id, 400, 500, '#ff4d4d', true);
+            state.socket.emit('newPlayer', {
+                x: state.myPlayer.x,
+                y: state.myPlayer.y,
+                state: state.myPlayer.state,
+                color: state.myPlayer.color
             });
-        } else {
-            console.warn("PeerJS error:", err);
-            document.getElementById('player-count').innerText = `Modo Offline (Error de Red)`;
         }
     });
-}
 
-function setupPeer(peer, isHost) {
-    state.peer = peer;
-    const myId = isHost ? state.GLOBAL_ID : peer.id;
-    
-    if (!state.myPlayer) {
-        state.myPlayer = new Player(myId, 400, 500, isHost ? '#ffcc00' : '#ff4d4d', true);
-    }
-
-    document.getElementById('player-id').innerText = `ID: ${isHost ? 'HOST' : 'Player'}`;
-    document.getElementById('player-count').innerText = isHost ? `Servidor Global Activo` : `Conectado al Servidor`;
-
-    peer.on('connection', (conn) => {
-        setupConnection(conn);
-    });
-}
-
-function setupConnection(conn) {
-    conn.on('open', () => {
-        state.connections.set(conn.peer, conn);
+    state.socket.on('currentPlayers', (serverPlayers) => {
+        Object.keys(serverPlayers).forEach((id) => {
+            if (id !== state.socket.id) {
+                const pData = serverPlayers[id];
+                const p = new Player(id, pData.x, pData.y, pData.color || '#4d94ff');
+                state.otherPlayers.set(id, p);
+            }
+        });
         updatePlayerCount();
-        // Send initial state
-        broadcastState(state.myPlayer);
     });
 
-    conn.on('data', (data) => {
-        if (data.type === 'update') {
-            let p = state.otherPlayers.get(data.id);
-            if (!p) {
-                p = new Player(data.id, data.x, data.y, '#4d94ff');
-                state.otherPlayers.set(data.id, p);
-            }
-            p.x = data.x;
-            p.y = data.y;
-            p.state = data.state;
-            
-            // Handle ranking data
-            if (data.height !== undefined) {
-                updateRanking(data.id, data.height);
-            }
-        }
-        if (data.type === 'leaderboard') {
-            state.leaderboard = data.list;
-            renderLeaderboard();
+    state.socket.on('playerJoined', (pData) => {
+        if (pData.id !== state.socket.id) {
+            const p = new Player(pData.id, pData.x, pData.y, pData.color || '#4d94ff');
+            state.otherPlayers.set(pData.id, p);
+            updatePlayerCount();
         }
     });
-}
 
-function updateRanking(id, height) {
-    const entry = state.leaderboard.find(e => e.id === id);
-    if (entry) {
-        if (height > entry.height) entry.height = height;
-    } else {
-        state.leaderboard.push({ id, height });
-    }
-    
-    // Keep top 5
-    state.leaderboard.sort((a, b) => b.height - a.height);
-    state.leaderboard = state.leaderboard.slice(0, 5);
-    
-    renderLeaderboard();
-    
-    // If I'm host, broadcast the new board
-    if (state.peer && state.peer.id === state.GLOBAL_ID) {
-        broadcastLeaderboard();
-    }
+    state.socket.on('playerMoved', (pData) => {
+        const p = state.otherPlayers.get(pData.id);
+        if (p) {
+            p.x = pData.x;
+            p.y = pData.y;
+            p.state = pData.state;
+        }
+    });
+
+    state.socket.on('playerLeft', (id) => {
+        state.otherPlayers.delete(id);
+        updatePlayerCount();
+    });
+
+    state.socket.on('leaderboardUpdate', (serverBoard) => {
+        state.leaderboard = serverBoard;
+        renderLeaderboard();
+    });
 }
 
 function renderLeaderboard() {
@@ -320,28 +287,30 @@ function renderLeaderboard() {
     list.innerHTML = '';
     state.leaderboard.forEach((entry, i) => {
         const li = document.createElement('li');
-        const name = entry.id === state.myPlayer?.id ? "Tú" : entry.id.substring(0, 5);
+        const name = entry.id === state.socket?.id ? "Tú" : entry.id.substring(0, 5);
         li.innerHTML = `<span>${i + 1}. ${name}</span> <span>${entry.height}m</span>`;
         list.appendChild(li);
     });
 }
 
-function broadcastLeaderboard() {
-    const data = { type: 'leaderboard', list: state.leaderboard };
-    state.connections.forEach(conn => conn.send(data));
-}
-
 function broadcastState(player) {
-    if (!state.connections || state.connections.size === 0) return;
-    const data = {
-        type: 'update',
-        id: player.id,
+    if (!state.socket || !state.socket.connected) return;
+    state.socket.emit('playerUpdate', {
         x: player.x,
         y: player.y,
-        state: player.state,
-        height: state.maxHeight
-    };
-    state.connections.forEach(conn => conn.send(data));
+        state: player.state
+    });
+    
+    // Also update height on server if it changed significantly
+    if (Math.abs(player.lastSentHeight - state.maxHeight) > 1) {
+        state.socket.emit('updateHeight', state.maxHeight);
+        player.lastSentHeight = state.maxHeight;
+    }
+}
+
+function updatePlayerCount() {
+    const count = state.otherPlayers.size + 1;
+    document.getElementById('player-count').innerText = `${count} Jugadores Online`;
 }
 
 function updatePlayerCount() {
